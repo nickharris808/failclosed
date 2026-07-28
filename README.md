@@ -1,7 +1,7 @@
 # failclosed
 
-[![PyPI](https://img.shields.io/badge/pypi-failclosed-blue)](https://pypi.org/project/failclosed/)
-[![CI](https://img.shields.io/badge/ci-passing-brightgreen)](../.github/workflows/ci.yml)
+[![install](https://img.shields.io/badge/install-from%20GitHub-blue)](https://github.com/nickharris808/failclosed#install)
+[![CI](https://img.shields.io/badge/ci-passing-brightgreen)](https://github.com/nickharris808/failclosed/actions/workflows/ci.yml)
 [![tests](https://img.shields.io/badge/tests-15%20passing-brightgreen)](tests/)
 [![python](https://img.shields.io/badge/python-3.9%2B-blue)](pyproject.toml)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -29,8 +29,11 @@ path there is **no code path from "we could not determine safety" to a success s
 ## Install
 
 ```
-pip install failclosed
+# from GitHub (PyPI release pending)
+pip install "failclosed @ git+https://github.com/nickharris808/failclosed.git"
 ```
+
+> `pip install failclosed` will work once the PyPI release lands. The distribution is built and `twine check`-clean; publication is pending.
 
 ## 30-second quickstart
 
@@ -106,7 +109,7 @@ SAFE/UNSAFE/REFUSED is your handler's job, because that mapping is specific to w
 `failclosed` enforces the *consequence* of the verdict, which is the part everyone gets wrong.
 
 If you want the other half — a verification engine that produces those verdicts — see
-[`minicheck`](../minicheck), an explicit-state model checker with no required dependencies.
+[`minicheck`](https://github.com/nickharris808/minicheck), an explicit-state model checker with no required dependencies.
 
 `failclosed` is the enforcement point extracted from a production verification gate. The gate itself
 — the solver fleet behind it, the response classifiers that map each endpoint's shape to a verdict,
@@ -120,6 +123,27 @@ pip install -e ".[test]" && pytest
 ```
 
 15 tests, one per branch in the table above, each driving a real ASGI app.
+
+## The portfolio
+
+Five small, independently useful tools built around one idea: **a verdict you cannot check is not a verdict.**
+
+| | |
+|---|---|
+| [`minicheck`](https://github.com/nickharris808/minicheck) | An explicit-state model checker in ~560 lines. Shortest counterexamples, no required dependencies. |
+| [`protocol-bench`](https://github.com/nickharris808/protocol-bench) | 15 published IEEE 802.11 / 3GPP procedures with ground truth. A claimed detection must **replay**. |
+| [`minicheck-mcp`](https://github.com/nickharris808/minicheck-mcp) | The checker as an **MCP server** — let an agent verify a state machine instead of guessing. |
+| [`polyfrac`](https://github.com/nickharris808/polyfrac) | Exact polynomial + rational-function arithmetic over ℚ with Sturm real-root counting. Zero deps. |
+| [`failclosed`](https://github.com/nickharris808/failclosed) ← *you are here* | Default-deny ASGI middleware: a gated endpoint succeeds only on an affirmative verdict. |
+
+Try it in your browser: **[live demo](https://huggingface.co/spaces/nickh007/protocol-bench-demo)** · Ground-truth tasks: **[dataset](https://huggingface.co/datasets/nickh007/protocol-bench)**
+
+### The commercial offering
+
+These are the engine. What is **not** open source is what makes it useful at scale: the maintained
+hazard-property corpora, composition analysis that finds hazards existing only when two components
+are combined, the trust-model sensitivity sweep, and the evidence trail that makes a verdict auditable
+after the fact. The tools above are MIT and stay that way.
 
 ## Licence
 

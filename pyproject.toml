@@ -22,12 +22,7 @@ classifiers = [
 dependencies = ["starlette>=0.27"]
 
 [project.optional-dependencies]
-test = [
-  "pytest>=7",
-  # starlette's TestClient prefers httpx2, which requires 3.10+; fall back on 3.9.
-  "httpx2>=2.0; python_version>='3.10'",
-  "httpx>=0.24; python_version<'3.10'",
-]
+test = ["pytest>=7", "httpx2>=2.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
