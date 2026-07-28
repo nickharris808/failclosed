@@ -2,7 +2,7 @@
 
 [![install](https://img.shields.io/badge/install-from%20GitHub-blue)](https://github.com/nickharris808/failclosed#install)
 [![CI](https://img.shields.io/badge/ci-passing-brightgreen)](https://github.com/nickharris808/failclosed/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-60%20passing-brightgreen)](tests/)
+[![tests](https://img.shields.io/badge/tests-62%20passing-brightgreen)](tests/)
 [![python](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 ![deps](https://img.shields.io/badge/dependencies-1-brightgreen)
@@ -17,12 +17,8 @@ the check is written as "refuse if we found a problem" rather than "refuse unles
 isn't one". Those differ on every path where the check did not complete — the handler threw, the
 solver timed out, a refactor dropped the header — and on those paths a 200 goes out.
 
-This inverts the default. On a gated path there is no code path from *undetermined* to *success*, and
-each of those failure modes has a test.
-
-Most authorization middleware is fail-*open* by accident. The handler throws, the solver times out,
-someone forgets to stamp a header — and a 200 goes out anyway. `failclosed` inverts that: on a gated
-path there is **no code path from "we could not determine safety" to a success status**.
+This inverts the default. On a gated path there is **no code path from "we could not determine
+safety" to a success status**, and each of those failure modes has a test.
 
 ~301 lines. One dependency (`starlette`), so it works with FastAPI too.
 
@@ -39,22 +35,34 @@ pip install "failclosed @ git+https://github.com/nickharris808/failclosed.git"
 
 ## 30-second quickstart
 
-```python
-from failclosed import FailClosedMiddleware
-
-app.add_middleware(FailClosedMiddleware, gated_prefixes=("/verify",))
-```
-
-Now every response under `/verify` must carry `X-Verdict: SAFE` or it becomes a 403.
+Complete and runnable — paste it into a file and run it.
 
 ```python
+from failclosed import FailClosedMiddleware, normalize
+from starlette.applications import Starlette
 from starlette.responses import JSONResponse
+from starlette.routing import Route
+from starlette.testclient import TestClient
+
+def check(request):                                   # your solver: True / False / None
+    return {"yes": True, "no": False}.get(request.query_params.get("a"))
 
 def handler(request):
-    proved = my_solver.check(request)             # True / False / None
-    verdict = "SAFE" if proved else ("UNSAFE" if proved is False else "REFUSED")
-    return JSONResponse({"detail": "..."}, headers={"X-Verdict": verdict})
+    proved = check(request)
+    return JSONResponse({"proved": proved}, headers={"X-Verdict": normalize(proved).value})
+
+app = Starlette(routes=[Route("/verify/thing", handler)])
+app.add_middleware(FailClosedMiddleware, gated_prefixes=("/verify",))
+
+client = TestClient(app)
+print(client.get("/verify/thing?a=yes").status_code)   # 200  <- proved safe
+print(client.get("/verify/thing?a=no").status_code)    # 403  <- counterexample
+print(client.get("/verify/thing").status_code)         # 403  <- solver said None
 ```
+
+Every response under `/verify` must now carry `X-Verdict: SAFE` or it becomes a 403. The third
+line is the one that matters: nothing went wrong, the solver simply could not tell — and that is
+refused rather than passed.
 
 ## Tutorial — gating a real endpoint
 
@@ -290,7 +298,7 @@ dominated by your handler and your solver, not by this code.
 pip install -e ".[test]" && pytest
 ```
 
-60 tests, one per branch in the table above, each driving a real ASGI app.
+62 tests, one per branch in the table above, each driving a real ASGI app.
 
 ## The portfolio
 
@@ -298,7 +306,7 @@ Five small, independently useful tools built around one idea: **a verdict you ca
 
 | | |
 |---|---|
-| [`minicheck`](https://github.com/nickharris808/minicheck) | An explicit-state model checker in ~301 lines, with a CLI. Shortest counterexamples, no required dependencies. |
+| [`minicheck`](https://github.com/nickharris808/minicheck) | An explicit-state model checker with a CLI. Shortest counterexamples, no required dependencies. |
 | [`protocol-bench`](https://github.com/nickharris808/protocol-bench) | 15 published IEEE 802.11 / 3GPP procedures with ground truth. A claimed detection must **replay**. |
 | [`minicheck-mcp`](https://github.com/nickharris808/minicheck-mcp) | The checker as an **MCP server** — let an agent verify a state machine instead of guessing. |
 | [`polyfrac`](https://github.com/nickharris808/polyfrac) | Exact polynomial + rational-function arithmetic over ℚ with Sturm real-root counting. Zero deps. |

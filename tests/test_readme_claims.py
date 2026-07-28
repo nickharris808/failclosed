@@ -125,3 +125,54 @@ def test_tutorial_refusal_preserves_the_counterexample():
 def test_tutorial_missing_header_reason_is_the_one_quoted():
     r = _tutorial_client("noheader").post("/verify/deploy")
     assert r.json()["refusal_reason"] == "gated endpoint returned no machine-checked verdict"
+
+
+def test_the_quickstart_block_runs_verbatim_and_prints_what_it_claims():
+    """The README's quickstart is extracted and executed as written.
+
+    An earlier version was an illustrative fragment calling `app.add_middleware` on an `app` that
+    did not exist, so a reader who pasted it got a NameError. A quickstart that does not run is a
+    claim the code does not support, so it is now executed here — including the three status codes
+    the comments promise.
+    """
+    import io
+    import re
+    from contextlib import redirect_stdout
+    from pathlib import Path
+
+    readme = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
+    section = re.search(r"##+ 30-second quickstart(.*?)(?=\n##+ )", readme, re.S).group(1)
+    code = re.findall(r"```python\n(.*?)```", section, re.S)
+    assert len(code) == 1, "the quickstart should be one self-contained block"
+
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        exec(compile(code[0], "<README quickstart>", "exec"), {"__name__": "__main__"})
+    assert buf.getvalue().split() == ["200", "403", "403"], buf.getvalue()
+
+    # ...and the comments next to those prints say the same thing.
+    assert re.findall(r"#\s*(\d{3})\b", code[0]) == ["200", "403", "403"]
+
+
+def test_no_claim_is_made_about_another_repo_that_this_one_cannot_verify():
+    """A line count for a *different* package cannot be checked from here, so it must not be quoted.
+
+    A bulk reconciliation once rewrote the portfolio table's description of `minicheck` using THIS
+    repository's line count, so four READMEs confidently stated a wrong number about a package they
+    do not contain. Numbers about other repos are now simply absent.
+    """
+    import re
+    from pathlib import Path
+
+    readme = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
+    for line in readme.splitlines():
+        if "github.com/nickharris808/" not in line:
+            continue
+        # The row describing this repo may quote its own numbers; rows about others may not.
+        others = [
+            m
+            for m in re.findall(r"github\.com/nickharris808/([a-z-]+)", line)
+            if m != Path(__file__).resolve().parents[1].name
+        ]
+        if others and re.search(r"~\d+\s+lines|\d+\s+tests", line):
+            raise AssertionError(f"unverifiable claim about {others}: {line.strip()}")
