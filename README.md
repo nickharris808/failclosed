@@ -3,7 +3,7 @@
 [![install](https://img.shields.io/badge/install-from%20GitHub-blue)](https://github.com/nickharris808/failclosed#install)
 [![CI](https://img.shields.io/badge/ci-passing-brightgreen)](https://github.com/nickharris808/failclosed/actions/workflows/ci.yml)
 [![tests](https://img.shields.io/badge/tests-15%20passing-brightgreen)](tests/)
-[![python](https://img.shields.io/badge/python-3.9%2B-blue)](pyproject.toml)
+[![python](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 ![deps](https://img.shields.io/badge/dependencies-1-brightgreen)
 
