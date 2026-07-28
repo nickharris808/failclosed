@@ -2,7 +2,7 @@
 
 [![install](https://img.shields.io/badge/install-from%20GitHub-blue)](https://github.com/nickharris808/failclosed#install)
 [![CI](https://img.shields.io/badge/ci-passing-brightgreen)](https://github.com/nickharris808/failclosed/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-57%20passing-brightgreen)](tests/)
+[![tests](https://img.shields.io/badge/tests-60%20passing-brightgreen)](tests/)
 [![python](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 ![deps](https://img.shields.io/badge/dependencies-1-brightgreen)
@@ -56,6 +56,72 @@ def handler(request):
     return JSONResponse({"detail": "..."}, headers={"X-Verdict": verdict})
 ```
 
+## Tutorial — gating a real endpoint
+
+End to end, from an ungated app to one where an unverified response cannot succeed.
+
+**1. Start with an endpoint that decides something.** It calls a checker and returns the answer:
+
+```python
+from starlette.applications import Starlette
+from starlette.responses import JSONResponse
+from starlette.routing import Route
+
+def deploy(request):
+    ok = my_checker.is_safe(request)     # True / False / None
+    return JSONResponse({"deployed": ok})
+
+app = Starlette(routes=[Route("/verify/deploy", deploy, methods=["POST"])])
+```
+
+The bug is not visible yet. If `my_checker` raises, or returns `None` because a solver timed out,
+this still returns **200** with `{"deployed": null}` — and whatever reads it sees a success.
+
+**2. Stamp the verdict.** `normalize` maps the three-valued answer onto the header:
+
+```python
+from failclosed import normalize
+
+def deploy(request):
+    ok = my_checker.is_safe(request)
+    return JSONResponse({"deployed": ok}, headers={"X-Verdict": normalize(ok).value})
+```
+
+**3. Install the gate.**
+
+```python
+from failclosed import FailClosedMiddleware
+
+app.add_middleware(FailClosedMiddleware, gated_prefixes=("/verify/",), deadline_s=2.0)
+```
+
+**4. Check each branch.** These are the four that matter, and all four have tests:
+
+| what happens | before the gate | after |
+|---|---|---|
+| checker proves safe | 200 | **200**, body verbatim |
+| checker finds a counterexample | 200 with `false` | **403**, counterexample preserved in the body |
+| solver times out, returns `None` | 200 with `null` | **403**, `"safety could not be machine-checked"` |
+| the handler raises | 500 | **403** — never a success, and never a stack trace |
+
+**5. The failure mode you did not write.** Someone later refactors the handler and drops the header.
+Without the gate that is a silent 200. With it:
+
+```console
+$ curl -i -X POST localhost:8000/verify/deploy
+HTTP/1.1 403 Forbidden
+x-verdict: REFUSED
+
+{"refused": true, "refusal_verdict": "REFUSED",
+ "refusal_reason": "gated endpoint returned no machine-checked verdict"}
+```
+
+That is the whole point: the gate does not need to know *why* the verdict is missing. Absent
+evidence is refused.
+
+**6. Keep the diagnosis.** A refusal preserves the original body and adds to it, so you lose the
+status code and never the reason. Log `refusal_reason`; it names which of the branches above fired.
+
 ## What happens on each branch
 
 | Handler does | Result |
@@ -83,6 +149,45 @@ x-verdict: UNSAFE
 ```
 
 The counterexample survives the refusal. You lose the status code, never the diagnosis.
+
+## API reference
+
+### `FailClosedMiddleware`
+
+| Parameter | Default | What it does |
+|---|---|---|
+| `gated_prefixes` | `()` | Path prefixes the gate governs. Matched with `str.startswith`, so `/g` also gates `/ghost`. Empty by default: installing the middleware cannot silently change behaviour. |
+| `deadline_s` | `0.5` | Wall-clock budget for the **whole** gated exchange, handler dispatch and response body. Exceeding it is a refusal, not a 504. |
+| `max_body_bytes` | `8 MiB` | Largest gated response body buffered before refusing. |
+| `require_verifiable_body` | `True` | A `SAFE` response must be confirmably complete — a matching `Content-Length`, or a JSON media type that parses. Set `False` to accept unverifiable bodies knowingly. |
+| `verdict_header` | `"X-Verdict"` | The header the handler stamps. |
+| `warm` | `None` | Zero-argument callable run once at construction, e.g. to import a solver so a cold first request does not spend its deadline on it. A failure here is swallowed; the gate stays fail-closed either way. |
+
+### `Verdict`
+
+A `str` enum. Only `SAFE` passes; matching is exact, with no case folding or trimming.
+
+| Member | Value | Meaning |
+|---|---|---|
+| `Verdict.SAFE` | `"SAFE"` | a machine-checked proof of safety |
+| `Verdict.UNSAFE` | `"UNSAFE"` | a conclusive counterexample |
+| `Verdict.REFUSED` | `"REFUSED"` | unknown, unavailable, timed out, missing, or unrecognised |
+
+### `normalize(safe: bool | None) -> Verdict`
+
+The mapping rule: `True` → `SAFE`, `False` → `UNSAFE`, **`None` → `REFUSED`**. `None` means the
+question was asked and not answered — a solver returning `unknown`, or one that is not installed.
+
+### `BodyTooLarge`
+
+Raised internally when a gated body exceeds `max_body_bytes`; surfaces to the client as a 403 with
+the reason stated. You will not normally catch it.
+
+### The refusal body
+
+Every 403 the gate produces is JSON containing the original body's keys (when it was a JSON object)
+plus `refused: true`, `refusal_reason`, and `refusal_verdict`. The diagnosis is never discarded —
+you lose the status code, not the evidence.
 
 ## Design notes
 
@@ -145,13 +250,47 @@ If you want the other half — a verification engine that produces those verdict
 and the evidence trail that makes a verdict auditable after the fact — is the commercial offering.
 This middleware is MIT and always will be.
 
+## Troubleshooting
+
+**Everything under my gated prefix returns 403.** The handler is not stamping the header, or is
+stamping something other than the exact string `SAFE`. Matching is exact — no case folding, no
+trimming. Check `response.headers["X-Verdict"]`.
+
+**A 403 with `"the response streams without a Content-Length and without a JSON media type"`.** The
+gate cannot confirm the body arrived whole, so it refuses. Declare a `Content-Length`, use a JSON
+media type, or pass `require_verifiable_body=False` if you accept the risk on that route.
+
+**A 403 with `"did not parse; it is likely truncated"`.** The handler died part-way through
+streaming. Starlette re-raises that exception only after the response is sent, so truncation is the
+only evidence available at gate time — and a half-payload stamped SAFE is worse than a refusal.
+
+**Timeouts on a route that used to pass.** The deadline covers the *whole* exchange including the
+response body, not just handler dispatch. A handler that returns headers immediately and streams
+slowly now counts against the budget. Raise `deadline_s` if the work genuinely takes that long.
+
+**`/ghost` is being gated and I only meant `/g`.** Prefixes are matched literally with
+`str.startswith`. Use `/g/` or a prefix that cannot collide.
+
+**Nothing is gated at all.** `gated_prefixes` defaults to `()`. That is deliberate — installing the
+middleware without configuring it must not silently change behaviour.
+
+**A gated download is refused with `"body exceeded"`.** Gated responses are buffered up to
+`max_body_bytes` (8 MiB). Gated endpoints are not for large downloads; put the download on an
+ungated path.
+
+## Performance
+
+The middleware buffers a gated response body and compares one header. There is no measured
+bottleneck here and nothing has been optimised — the wall-clock cost of a gated request is
+dominated by your handler and your solver, not by this code.
+
 ## Tests
 
 ```
 pip install -e ".[test]" && pytest
 ```
 
-57 tests, one per branch in the table above, each driving a real ASGI app.
+60 tests, one per branch in the table above, each driving a real ASGI app.
 
 ## The portfolio
 
@@ -159,7 +298,7 @@ Five small, independently useful tools built around one idea: **a verdict you ca
 
 | | |
 |---|---|
-| [`minicheck`](https://github.com/nickharris808/minicheck) | An explicit-state model checker in ~1308 lines. Shortest counterexamples, no required dependencies. |
+| [`minicheck`](https://github.com/nickharris808/minicheck) | An explicit-state model checker in ~1619 lines, with a CLI. Shortest counterexamples, no required dependencies. |
 | [`protocol-bench`](https://github.com/nickharris808/protocol-bench) | 15 published IEEE 802.11 / 3GPP procedures with ground truth. A claimed detection must **replay**. |
 | [`minicheck-mcp`](https://github.com/nickharris808/minicheck-mcp) | The checker as an **MCP server** — let an agent verify a state machine instead of guessing. |
 | [`polyfrac`](https://github.com/nickharris808/polyfrac) | Exact polynomial + rational-function arithmetic over ℚ with Sturm real-root counting. Zero deps. |

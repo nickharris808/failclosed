@@ -79,3 +79,49 @@ def test_readme_states_what_the_tool_does_not_establish():
     assert re.search(r"^#+ .*(honest scope|limitations|what this does not)", text, re.M | re.I), (
         "README has no section stating the tool's limits"
     )
+
+
+# --------------------------------------------------------------- the tutorial must be reproducible
+def _tutorial_client(behaviour):
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse
+    from starlette.routing import Route
+    from starlette.testclient import TestClient
+
+    from failclosed import FailClosedMiddleware, normalize
+
+    def deploy(request):
+        if behaviour == "raise":
+            raise RuntimeError("checker exploded")
+        if behaviour == "noheader":
+            return JSONResponse({"deployed": None})
+        ok = {"safe": True, "unsafe": False, "unknown": None}[behaviour]
+        return JSONResponse(
+            {"deployed": ok, "counterexample": ["s0", "s1"]},
+            headers={"X-Verdict": normalize(ok).value},
+        )
+
+    app = Starlette(routes=[Route("/verify/deploy", deploy, methods=["POST"])])
+    app.add_middleware(FailClosedMiddleware, gated_prefixes=("/verify/",), deadline_s=2.0)
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def test_tutorial_branch_table_matches_reality():
+    """Each row of the README's before/after table, driven through a real ASGI app."""
+    expected = {"safe": 200, "unsafe": 403, "unknown": 403, "raise": 403, "noheader": 403}
+    for behaviour, status in expected.items():
+        r = _tutorial_client(behaviour).post("/verify/deploy")
+        assert r.status_code == status, f"{behaviour} returned {r.status_code}, README says {status}"
+
+
+def test_tutorial_refusal_preserves_the_counterexample():
+    """The README promises the diagnosis survives the refusal."""
+    r = _tutorial_client("unsafe").post("/verify/deploy")
+    body = r.json()
+    assert body["counterexample"] == ["s0", "s1"]
+    assert body["refused"] is True
+
+
+def test_tutorial_missing_header_reason_is_the_one_quoted():
+    r = _tutorial_client("noheader").post("/verify/deploy")
+    assert r.json()["refusal_reason"] == "gated endpoint returned no machine-checked verdict"
