@@ -2,7 +2,7 @@
 
 [![install](https://img.shields.io/badge/install-from%20GitHub-blue)](https://github.com/nickharris808/failclosed#install)
 [![CI](https://img.shields.io/badge/ci-passing-brightgreen)](https://github.com/nickharris808/failclosed/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-15%20passing-brightgreen)](tests/)
+[![tests](https://img.shields.io/badge/tests-57%20passing-brightgreen)](tests/)
 [![python](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 ![deps](https://img.shields.io/badge/dependencies-1-brightgreen)
@@ -24,7 +24,7 @@ Most authorization middleware is fail-*open* by accident. The handler throws, th
 someone forgets to stamp a header — and a 200 goes out anyway. `failclosed` inverts that: on a gated
 path there is **no code path from "we could not determine safety" to a success status**.
 
-~160 lines. One dependency (`starlette`), so it works with FastAPI too.
+~301 lines. One dependency (`starlette`), so it works with FastAPI too.
 
 ## Install
 
@@ -102,11 +102,38 @@ app.add_middleware(FailClosedMiddleware, gated_prefixes=("/verify",), warm=warm)
 
 **Configurable header** via `verdict_header=` if `X-Verdict` collides with something you already use.
 
-## What this package does *not* do
+## Honest scope
 
-It does not decide the verdict. Mapping your solver's output — or your endpoint's response shape — to
-SAFE/UNSAFE/REFUSED is your handler's job, because that mapping is specific to what you are proving.
-`failclosed` enforces the *consequence* of the verdict, which is the part everyone gets wrong.
+**What it guarantees.** On a gated path, a status below 400 is returned only when the handler stamped
+an affirmative `SAFE` verdict *and* the response body arrived intact within the deadline. There is no
+code path from "could not determine" to success.
+
+The deadline covers the **whole exchange** — handler dispatch and reading the response body. Wrapping
+only the handler left streaming outside the budget, so a handler that returned headers instantly and
+then stalled blew through a 500 ms deadline and still returned 200.
+
+**Completeness is required, not assumed.** A `SAFE` response must be one whose body can be confirmed
+whole: it declares a `Content-Length` that matches, or it declares a JSON media type and parses. If
+neither holds, the gate refuses and says so. This is because Starlette's `BaseHTTPMiddleware` records
+a mid-stream handler exception but only re-raises it *after* the response has been sent — so
+truncation is the only evidence available at gate time. Pass `require_verifiable_body=False` to
+accept that risk deliberately for a genuinely unbounded stream.
+
+**What it does not do.**
+
+- It does not decide the verdict. Mapping your solver's output — or your endpoint's response shape —
+  to SAFE/UNSAFE/REFUSED is your handler's job, because that mapping is specific to what you are
+  proving. `failclosed` enforces the *consequence*, which is the part everyone gets wrong.
+- It does not verify that a `SAFE` stamp was *earned*. A handler that stamps `SAFE` unconditionally
+  will pass. The gate enforces that an unstamped or negatively-stamped response cannot succeed; it
+  cannot audit your prover for you.
+- It does not protect ungated paths, and gating is prefix-matched literally — `/g` also gates
+  `/ghost`. Choose prefixes that cannot collide.
+- It buffers gated response bodies up to `max_body_bytes` (8 MiB default), so gated endpoints are not
+  suitable for large downloads.
+
+**A bypass shipped in 0.1.0 and is fixed here.** The deadline did not cover body streaming. See
+[SECURITY-ADVISORY.md](SECURITY-ADVISORY.md).
 
 If you want the other half — a verification engine that produces those verdicts — see
 [`minicheck`](https://github.com/nickharris808/minicheck), an explicit-state model checker with no required dependencies.
@@ -122,7 +149,7 @@ This middleware is MIT and always will be.
 pip install -e ".[test]" && pytest
 ```
 
-15 tests, one per branch in the table above, each driving a real ASGI app.
+57 tests, one per branch in the table above, each driving a real ASGI app.
 
 ## The portfolio
 
@@ -130,7 +157,7 @@ Five small, independently useful tools built around one idea: **a verdict you ca
 
 | | |
 |---|---|
-| [`minicheck`](https://github.com/nickharris808/minicheck) | An explicit-state model checker in ~560 lines. Shortest counterexamples, no required dependencies. |
+| [`minicheck`](https://github.com/nickharris808/minicheck) | An explicit-state model checker in ~1308 lines. Shortest counterexamples, no required dependencies. |
 | [`protocol-bench`](https://github.com/nickharris808/protocol-bench) | 15 published IEEE 802.11 / 3GPP procedures with ground truth. A claimed detection must **replay**. |
 | [`minicheck-mcp`](https://github.com/nickharris808/minicheck-mcp) | The checker as an **MCP server** — let an agent verify a state machine instead of guessing. |
 | [`polyfrac`](https://github.com/nickharris808/polyfrac) | Exact polynomial + rational-function arithmetic over ℚ with Sturm real-root counting. Zero deps. |

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "failclosed"
-version = "0.1.0"
+version = "0.2.0"
 description = "Default-deny ASGI middleware: a gated endpoint succeeds only on an affirmative machine-checked verdict."
 readme = "README.md"
 requires-python = ">=3.10"
