@@ -1,37 +1,69 @@
 # Contributing to failclosed
 
-The point of this package is that it is small enough to audit and impossible to accidentally make
-fail-open. That shapes what changes are easy to accept.
+Contributions are welcome. Most of this is one rule.
 
-## Ground rules
+## The rule
 
-1. **One dependency.** `starlette`, and nothing else at runtime. A pull request adding another will
-   be declined regardless of merit.
-2. **No new success path.** Every change is measured against one property: a gated request must not be
-   able to reach a 2xx without an affirmative SAFE verdict. If your change adds a branch, add the test
-   that proves the branch still refuses.
-3. **The middleware does not classify.** Mapping a solver result or a response body to a verdict is
-   the caller's job. Requests to add body-shape sniffing here will be declined — it makes the gate
-   domain-specific and hides the decision.
+**No change may let this tool give a confident answer it has not earned.**
 
-## Getting set up
+Everything else is negotiable. That is not. A change is unlikely to be accepted if it lets a verdict
+be reported from an analysis that did not establish it, maps an undetermined result onto something a
+downstream system renders as success, or silently coerces input rather than refusing it.
 
-```
-python -m venv .venv && . .venv/bin/activate
+Unsure whether a change crosses that line? Open an issue first — much easier before the code exists.
+
+## Reporting a false verdict
+
+The most valuable bug report you can send, and it takes priority. **Include the input.**
+
+If this tool told you something was proved and it was not, that is a security-grade defect. Earlier
+ones in this portfolio got public advisories; the response is disclosure plus a regression test, not
+a quiet patch.
+
+## Setup
+
+```console
+git clone https://github.com/nickharris808/failclosed.git
+cd failclosed
+python -m venv .venv && source .venv/bin/activate
 pip install -e ".[test]"
-pytest
+pytest -q
 ```
 
-## Pull requests
+## What a good test looks like
 
-- Add a test that fails before your change and passes after. Tests live in `tests/`.
-- Keep the public API in `__all__` explicit; anything not listed there is internal.
-- Default-off stays default-off: `gated_prefixes` defaults to `()` on purpose.
-- Sign-off by [DCO](https://developercertificate.org/) (`git commit -s`). There is no CLA.
+Three kinds, in increasing order of worth:
 
-## Reporting a fail-open
+1. **Unit tests** — they ask whether the code agrees with itself. Necessary, least informative.
+2. **Adversarial tests** — malformed, empty, enormous, out-of-distribution input, with one oracle:
+   *no input may produce a confident-looking answer that is wrong.*
+3. **Differential tests** — the best. Check against an independent implementation of the same
+   question.
 
-A gated request that reaches a 2xx without a SAFE verdict is the most serious possible bug here — it is
-the one thing this package exists to prevent. Please report it privately first if you believe it is
-exploitable, and include the route definition and middleware configuration so it can go straight into
-the test suite.
+**Mutation-test your regression test.** Reintroduce the bug and confirm the test goes red. A test
+that passes on both the broken and the fixed code is worth nothing.
+
+## Numbers in documentation
+
+`tests/test_readme_claims.py` re-derives every numeric claim in the README. If you change the test
+count or add source, it fails until the README matches. That is working as intended — never write a
+number the published code cannot reproduce.
+
+## Style
+
+- `ruff check .` and `ruff format --check .` must pass; line length 120.
+- Comments explain **why**. The code says what.
+- Error messages name the fix, not just the fault.
+
+## Responsible disclosure
+
+Do not add findings or verdicts about **named** third-party products, vendors or protocols. Ship the
+checker and the methodology.
+
+## Licence
+
+MIT. By contributing you agree your contribution is licensed the same way.
+
+---
+
+Portfolio-wide guidance: <https://nickharris808.github.io/verification-docs/guides/contributing/>

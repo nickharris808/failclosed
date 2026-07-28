@@ -1,0 +1,15 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "failclosed"
+abstract: "Default-deny ASGI middleware: a gated endpoint succeeds only on an affirmative machine-checked verdict"
+type: software
+authors:
+  - family-names: Harris
+    given-names: Nick
+repository-code: "https://github.com/nickharris808/failclosed"
+url: "https://nickharris808.github.io/verification-docs/"
+license: MIT
+keywords:
+  - formal methods
+  - model checking
+  - verification

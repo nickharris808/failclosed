@@ -298,7 +298,7 @@ Five small, independently useful tools built around one idea: **a verdict you ca
 
 | | |
 |---|---|
-| [`minicheck`](https://github.com/nickharris808/minicheck) | An explicit-state model checker in ~1619 lines, with a CLI. Shortest counterexamples, no required dependencies. |
+| [`minicheck`](https://github.com/nickharris808/minicheck) | An explicit-state model checker in ~301 lines, with a CLI. Shortest counterexamples, no required dependencies. |
 | [`protocol-bench`](https://github.com/nickharris808/protocol-bench) | 15 published IEEE 802.11 / 3GPP procedures with ground truth. A claimed detection must **replay**. |
 | [`minicheck-mcp`](https://github.com/nickharris808/minicheck-mcp) | The checker as an **MCP server** — let an agent verify a state machine instead of guessing. |
 | [`polyfrac`](https://github.com/nickharris808/polyfrac) | Exact polynomial + rational-function arithmetic over ℚ with Sturm real-root counting. Zero deps. |
