@@ -33,7 +33,9 @@ path there is **no code path from "we could not determine safety" to a success s
 pip install "failclosed @ git+https://github.com/nickharris808/failclosed.git"
 ```
 
-> `pip install failclosed` will work once the PyPI release lands. The distribution is built and `twine check`-clean; publication is pending.
+> `pip install failclosed` does not work yet — the package is not on PyPI. Install from GitHub as
+> shown above. The distribution builds and is `twine check`-clean, with no unpublished
+> dependencies, so it is ready to upload whenever that happens.
 
 ## 30-second quickstart
 
