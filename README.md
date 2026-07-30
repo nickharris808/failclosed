@@ -1,7 +1,7 @@
 # failclosed
 
 [![install](https://img.shields.io/badge/install-from%20GitHub-blue)](https://github.com/nickharris808/failclosed#install)
-[![CI](https://img.shields.io/badge/ci-passing-brightgreen)](https://github.com/nickharris808/failclosed/actions/workflows/ci.yml)
+[![CI](https://github.com/nickharris808/failclosed/actions/workflows/ci.yml/badge.svg)](https://github.com/nickharris808/failclosed/actions/workflows/ci.yml)
 [![tests](https://img.shields.io/badge/tests-62%20passing-brightgreen)](tests/)
 [![python](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -25,13 +25,14 @@ safety" to a success status**, and each of those failure modes has a test.
 ## Install
 
 ```
-# from GitHub (PyPI release pending)
+pip install failclosed
+
+# or from source, unreleased main:
 pip install "failclosed @ git+https://github.com/nickharris808/failclosed.git"
 ```
 
-> `pip install failclosed` does not work yet — the package is not on PyPI. Install from GitHub as
-> shown above. The distribution builds and is `twine check`-clean, with no unpublished
-> dependencies, so it is ready to upload whenever that happens.
+> Published on PyPI as **`failclosed` 0.2.0** (2026-07-30). `pip install failclosed` works.
+> The `git+https` form above installs unreleased `main` instead.
 
 ## 30-second quickstart
 
@@ -60,9 +61,38 @@ print(client.get("/verify/thing?a=no").status_code)    # 403  <- counterexample
 print(client.get("/verify/thing").status_code)         # 403  <- solver said None
 ```
 
+Saved as `fc.py`, that is the real output:
+
+```console
+$ python fc.py
+200
+403
+403
+```
+
 Every response under `/verify` must now carry `X-Verdict: SAFE` or it becomes a 403. The third
 line is the one that matters: nothing went wrong, the solver simply could not tell — and that is
 refused rather than passed.
+
+### The refusal keeps its diagnosis
+
+Append two lines to `fc.py` and look at what the third request actually returned:
+
+```python
+r = client.get("/verify/thing")
+print(r.headers["x-verdict"], r.json())
+```
+
+```console
+$ python fc.py
+200
+403
+403
+REFUSED {'proved': None, 'refused': True, 'refusal_reason': 'safety could not be machine-checked (unknown or unavailable)', 'refusal_verdict': 'REFUSED'}
+```
+
+You lose the status code, never the reason. `refusal_reason` names which branch fired, so a log line
+distinguishes "the solver said no" from "the solver said nothing".
 
 ## Tutorial — gating a real endpoint
 
@@ -286,11 +316,63 @@ middleware without configuring it must not silently change behaviour.
 `max_body_bytes` (8 MiB). Gated endpoints are not for large downloads; put the download on an
 ungated path.
 
+## FAQ
+
+**"Isn't this just three lines of middleware I could write myself?"**
+It is about 300 lines, and the interesting part is not the happy path. The three things people
+get wrong are: the deadline covering only the handler and not the response body (a handler that
+returns headers instantly and then stalls sailed through a 500 ms budget with a 200); an unstamped
+response being treated as unremarkable rather than as an uncertified success; and a handler exception
+becoming a 500, which some callers retry and some treat as transient. Each of those has a test here.
+
+**"A handler that stamps `SAFE` unconditionally passes. So what does this prove?"**
+That an *unstamped* or negatively-stamped response cannot succeed on a gated path. It deliberately
+does not audit your prover — mapping a solver's output to SAFE/UNSAFE/REFUSED is specific to what you
+are proving, so it stays in your handler. This enforces the consequence, which is the part everyone
+gets wrong. See [Honest scope](#honest-scope), which says exactly this.
+
+**"Why 403 and not 503, or 500?"**
+Because the request was understood and refused, not dropped and not broken. 503 and 500 both invite a
+retry, and retrying a request whose safety could not be established just asks the same unanswerable
+question again. 403 with a machine-readable `refusal_reason` says "no, and here is which branch
+fired".
+
+**"Why does an exception become 403 rather than 500?"**
+A 500 on a gated path is still not a success, so the status is not the issue — the leak is. A
+traceback from a verification endpoint tells an attacker what your solver is and where it broke.
+The refusal is uniform and the diagnosis goes to your log via `refusal_reason`.
+
+**"The deadline default of 0.5 s seems short."**
+It is, deliberately: a default that quietly accommodates a slow solver is a default that hides one.
+Raise `deadline_s` when the work genuinely takes longer, and use `warm=` so a cold first request does
+not spend its budget loading a shared library.
+
+**"`require_verifiable_body` refuses my streaming endpoint."**
+Correct, and the reason is specific. Starlette's `BaseHTTPMiddleware` records a mid-stream handler
+exception but only re-raises it *after* the response has been sent, so at gate time truncation is the
+only evidence available — and a half-payload stamped `SAFE` is worse than a refusal. Pass
+`require_verifiable_body=False` to accept that risk knowingly on a route where the stream really is
+unbounded.
+
+**"Nothing is gated after I installed it."**
+That is the intended default. `gated_prefixes` is `()`, so installing the middleware cannot silently
+change your app's behaviour. Opt paths in explicitly.
+
+**"Is it production-ready?"**
+Yes, as an enforcement point. It does not decide verdicts and cannot audit your prover. Read
+[Honest scope](#honest-scope) before relying on it — that section is the answer to this question.
+
+**"Something here gave me a confident answer that was wrong."**
+Worth an issue rather than a workaround, and please include the app. A bypass of exactly that kind
+shipped in 0.1.0 — the deadline did not cover body streaming — and carries a public advisory rather
+than a quiet patch.
+
 ## Performance
 
 The middleware buffers a gated response body and compares one header. There is no measured
 bottleneck here and nothing has been optimised — the wall-clock cost of a gated request is
-dominated by your handler and your solver, not by this code.
+dominated by your handler and your solver, not by this code. The one cost worth naming is memory: a
+gated response is buffered up to `max_body_bytes` (8 MiB default) before it is released.
 
 ## Tests
 
@@ -298,7 +380,14 @@ dominated by your handler and your solver, not by this code.
 pip install -e ".[test]" && pytest
 ```
 
-62 tests, one per branch in the table above, each driving a real ASGI app.
+```console
+$ pytest -q
+..............................................................           [100%]
+62 passed in 6.10s
+```
+
+62 tests, one per branch in the table above, each driving a real ASGI app. One asserts this README's
+own test count against `pytest --collect-only`, so the badge cannot drift.
 
 ## The portfolio
 
