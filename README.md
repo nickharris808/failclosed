@@ -1,8 +1,8 @@
 # failclosed
 
-[![install](https://img.shields.io/badge/install-from%20GitHub-blue)](https://github.com/nickharris808/failclosed#install)
+[![PyPI](https://img.shields.io/pypi/v/failclosed)](https://pypi.org/project/failclosed/)
 [![CI](https://github.com/nickharris808/failclosed/actions/workflows/ci.yml/badge.svg)](https://github.com/nickharris808/failclosed/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-62%20passing-brightgreen)](tests/)
+[![tests](https://img.shields.io/badge/tests-67%20passing-brightgreen)](tests/)
 [![python](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 ![deps](https://img.shields.io/badge/dependencies-1-brightgreen)
@@ -383,10 +383,10 @@ pip install -e ".[test]" && pytest
 ```console
 $ pytest -q
 ..............................................................           [100%]
-62 passed in 6.10s
+65 passed in 6.10s
 ```
 
-62 tests, one per branch in the table above, each driving a real ASGI app. One asserts this README's
+67 tests, one per branch in the table above, each driving a real ASGI app. One asserts this README's
 own test count against `pytest --collect-only`, so the badge cannot drift.
 
 ## The portfolio

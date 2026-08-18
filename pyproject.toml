@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "failclosed"
-version = "0.2.0"
+version = "0.2.1"
 description = "Default-deny ASGI middleware: a gated endpoint succeeds only on an affirmative machine-checked verdict."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -22,6 +22,12 @@ classifiers = [
 ]
 dependencies = ["starlette>=0.27"]
 
+[project.urls]
+Homepage = "https://github.com/nickharris808/failclosed"
+Documentation = "https://nickharris808.github.io/verification-docs/"
+Repository = "https://github.com/nickharris808/failclosed"
+Issues = "https://github.com/nickharris808/failclosed/issues"
+
 [project.optional-dependencies]
 test = ["pytest>=7", "httpx2>=2.0"]
 
@@ -29,4 +35,5 @@ test = ["pytest>=7", "httpx2>=2.0"]
 where = ["src"]
 
 [tool.pytest.ini_options]
+markers = ["network: reaches PyPI; skipped offline, and a skip is never a pass"]
 testpaths = ["tests"]
